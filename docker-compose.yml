@@ -1,0 +1,40 @@
+services:
+  shop:
+    build: services/shop
+    labels:
+      aisre.target: "true"
+    environment:
+      APP_VERSION: ${APP_VERSION:-2.4.0}
+      PREVIOUS_VERSION: ${PREVIOUS_VERSION:-2.3.1}
+      PAYMENT_TIMEOUT_MS: ${PAYMENT_TIMEOUT_MS:-1000}
+      POOL_SIZE: ${POOL_SIZE:-5}
+    healthcheck:
+      test: ["CMD", ".venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  load:
+    build: services/load
+    depends_on:
+      shop:
+        condition: service_healthy
+    environment:
+      TARGET_URL: http://shop:8000/orders
+      RPS: ${RPS:-15}
+
+  agent:
+    build: .
+    depends_on:
+      shop:
+        condition: service_healthy
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    environment:
+      LLM_URL: ${LLM_URL:-http://host.docker.internal:8080/v1}
+      WINDOW_SECONDS: ${WINDOW_SECONDS:-25}
+      SCENARIO: ${SCENARIO:-bad_release}
+      COMPARE: ${COMPARE:-0}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./reports:/reports
